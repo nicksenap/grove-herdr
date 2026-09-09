@@ -483,6 +483,44 @@ def apply_grove_uninstall(path: Path, plugin_root: str) -> tuple[list[str], list
     return [], skipped
 
 
+def herdr_binding_ok(text: str) -> tuple[bool, str]:
+    tables = [
+        block
+        for _start, _end, block in command_tables(text)
+        if table_key(block) == DEFAULT_KEY
+    ]
+    if not tables:
+        return False, f"{DEFAULT_KEY} is not bound"
+    ours = [block for block in tables if is_our_create_command(table_command(block) or "")]
+    if not ours:
+        return False, f"{DEFAULT_KEY} is bound to something else"
+    if len(ours) != 1 or len(tables) != 1:
+        return False, f"{DEFAULT_KEY} has duplicate bindings"
+    found = [s for s in sections(text) if s[0] == "[keys]"]
+    if found:
+        body = section_body(text, found[0][0], found[0][1], found[0][2])
+        match = NEW_WORKTREE_RE.search(body)
+        if match and match.group("value").strip() not in {'""', "''"}:
+            return False, "keys.new_worktree still uses Herdr's stock dialog"
+    return True, f"{DEFAULT_KEY} opens the Grove popup"
+
+
+def grove_hooks_ok(text: str, plugin_root: str) -> list[tuple[str, bool, str]]:
+    results: list[tuple[str, bool, str]] = []
+    for hook, script_name in (
+        ("post_create", "post-create.sh"),
+        ("pre_delete", "pre-delete.sh"),
+    ):
+        current, form = extract_hook_command(text, hook)
+        if form == "missing" or current is None:
+            results.append((hook, False, f"hooks.{hook} is not set"))
+        elif is_our_hook(current, plugin_root, script_name):
+            results.append((hook, True, f"hooks.{hook} points at this plugin"))
+        else:
+            results.append((hook, False, f"hooks.{hook} runs something else: {current}"))
+    return results
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -501,6 +539,13 @@ def build_parser() -> argparse.ArgumentParser:
     grove_un = sub.add_parser("grove-uninstall")
     grove_un.add_argument("--config", required=True)
     grove_un.add_argument("--plugin-root", default="")
+
+    herdr_ck = sub.add_parser("herdr-check")
+    herdr_ck.add_argument("--config", required=True)
+
+    grove_ck = sub.add_parser("grove-check")
+    grove_ck.add_argument("--config", required=True)
+    grove_ck.add_argument("--plugin-root", required=True)
     return parser
 
 
@@ -534,6 +579,29 @@ def main(argv: list[str] | None = None) -> int:
         for line in skipped:
             print(f"skip: {line}", file=sys.stderr)
         return 0
+
+    if args.cmd == "herdr-check":
+        path = Path(args.config)
+        if not path.exists():
+            print(f"FAIL\t{DEFAULT_KEY}\tno Herdr config at {path}")
+            return 1
+        ok, message = herdr_binding_ok(path.read_text(encoding="utf-8"))
+        print(f"{'PASS' if ok else 'FAIL'}\t{DEFAULT_KEY}\t{message}")
+        return 0 if ok else 1
+
+    if args.cmd == "grove-check":
+        path = Path(args.config)
+        if not path.exists():
+            print(f"FAIL\tgrove-hooks\tno Grove config at {path}")
+            return 1
+        failed = 0
+        for hook, ok, message in grove_hooks_ok(
+            path.read_text(encoding="utf-8"), args.plugin_root
+        ):
+            print(f"{'PASS' if ok else 'FAIL'}\t{hook}\t{message}")
+            if not ok:
+                failed += 1
+        return 1 if failed else 0
 
     changes, skipped = apply_grove(Path(args.config), args.plugin_root)
     if changes:

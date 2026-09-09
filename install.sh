@@ -58,6 +58,7 @@ need python3
 
 herdr_bin=$(command -v herdr)
 chmod +x \
+  "$plugin_root/check.sh" \
   "$plugin_root/hooks/herdr-create.sh" \
   "$plugin_root/hooks/herdr-workspace.sh" \
   "$plugin_root/hooks/post-create.sh" \
@@ -97,3 +98,5 @@ printf '  plugin: %s\n' "$plugin_root"
 printf '  key:    prefix+shift+g\n'
 printf '  herdr:  %s\n' "$HERDR_CONFIG"
 printf '  grove:  %s\n' "$GROVE_CONFIG"
+printf '\n==> verifying\n'
+"$plugin_root/check.sh"

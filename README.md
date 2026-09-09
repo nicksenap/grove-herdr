@@ -14,7 +14,25 @@ curl -fsSL https://raw.githubusercontent.com/nicksenap/grove-herdr/main/install.
 
 From a clone: `./install.sh`
 
-Safe to re-run. It will not overwrite Grove hooks that already do something else.
+That is the recommended path. It links the plugin, binds `prefix+shift+g`, and wires Grove `post_create` / `pre_delete` so a Herdr workspace opens and closes with `gw create` / `gw delete`. Safe to re-run. It will not overwrite Grove hooks that already do something else.
+
+You can also install only the plugin with Herdr:
+
+```bash
+herdr plugin install nicksenap/grove-herdr
+```
+
+That registers `grove.workspace` and nothing else. No keybinding, no Grove hooks, so `prefix+shift+g` still opens Herdr’s stock single-repo worktree dialog. Use the shell script unless you want to wire those by hand.
+
+## Check
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nicksenap/grove-herdr/main/check.sh | sh
+```
+
+From a clone: `./check.sh`
+
+Prints PASS/FAIL for `herdr`, `gw`, `python3`, plugin files, the Herdr link, `prefix+shift+g`, and Grove hooks. Exit 0 only if the whole flow is wired. `install.sh` runs this at the end.
 
 ## Update
 
@@ -24,7 +42,7 @@ Same command as install. It pulls the latest `main` into `~/.local/share/grove-h
 curl -fsSL https://raw.githubusercontent.com/nicksenap/grove-herdr/main/install.sh | sh
 ```
 
-Herdr has no `plugin update`. Re-running install is the update.
+Herdr has no `plugin update`. Re-running install is the update. `herdr plugin install nicksenap/grove-herdr` again also refreshes a GitHub-managed install, but still will not bind the key or Grove hooks.
 
 ## Uninstall
 
@@ -42,11 +60,3 @@ Removes the plugin, the `prefix+shift+g` Grove binding, and only the Grove hooks
 2. Type a workspace name. Escape cancels.
 3. Grove creates the workspace (repo picker included).
 4. A Herdr workspace opens on that path.
-
-## What install changes
-
-- Links this directory as Herdr plugin `grove.workspace`
-- Binds `prefix+shift+g` to the Grove popup and clears Herdr’s stock worktree key
-- Sets Grove `post_create` / `pre_delete` so Herdr workspaces open and close with `gw create` / `gw delete`
-
-Theme, other keybindings, and Grove presets are left alone.

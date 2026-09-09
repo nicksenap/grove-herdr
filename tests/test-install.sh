@@ -225,4 +225,35 @@ cp "$GROVE_CONFIG" "$tmp/uninstall.foreign"
 python3 "$configure" grove-uninstall --config "$GROVE_CONFIG" --plugin-root "$root" >/dev/null
 assert_file_eq "$GROVE_CONFIG" "$tmp/uninstall.foreign" "uninstall overwrote foreign Grove hooks"
 
+# Dump-proof check: wired configs pass, missing wiring fails.
+python3 "$configure" herdr --config "$tmp/herdr.check" --herdr-bin /opt/homebrew/bin/herdr >/dev/null
+python3 "$configure" herdr-check --config "$tmp/herdr.check" >/dev/null || fail "herdr-check failed on a wired config"
+if python3 "$configure" herdr-check --config "$tmp/missing-herdr.toml" >/dev/null 2>&1; then
+  fail "herdr-check passed without a config"
+fi
+python3 "$configure" grove --config "$tmp/grove.check" --plugin-root "$plugin_root" >/dev/null
+python3 "$configure" grove-check --config "$tmp/grove.check" --plugin-root "$plugin_root" >/dev/null || fail "grove-check failed on wired hooks"
+if python3 "$configure" grove-check --config "$tmp/missing-grove.toml" --plugin-root "$plugin_root" >/dev/null 2>&1; then
+  fail "grove-check passed without a config"
+fi
+
+# Re-install then check.sh should pass (Herdr server warning is OK).
+: > "$state/plugin-list"
+: > "$HERDR_CONFIG_PATH"
+: > "$GROVE_CONFIG"
+"$root/install.sh" >/dev/null
+if ! "$root/check.sh" >"$tmp/check.out"; then
+  cat "$tmp/check.out" >&2
+  fail "check.sh failed after install.sh"
+fi
+grep -Fq 'PASS  herdr is on PATH' "$tmp/check.out" || fail "check.sh missed herdr"
+grep -Fq 'PASS  gw is on PATH' "$tmp/check.out" || fail "check.sh missed gw"
+grep -Fq 'PASS  prefix+shift+g opens the Grove popup' "$tmp/check.out" || fail "check.sh missed keybinding"
+
+"$root/uninstall.sh" >/dev/null
+if "$root/check.sh" >"$tmp/check.uninstalled" 2>/dev/null; then
+  cat "$tmp/check.uninstalled" >&2
+  fail "check.sh passed after uninstall"
+fi
+
 printf 'Install idempotency tests passed.\n'
