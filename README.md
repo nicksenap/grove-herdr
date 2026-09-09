@@ -16,67 +16,44 @@ Grove post_create
 herdr workspace create --cwd <grove-path>
 ```
 
-## Requirements
-
-- [Grove](https://github.com/nicksenap/grove) (`gw` on `PATH`)
-- [Herdr](https://herdr.dev) 0.8.0+
-- Python 3 (for the Grove ↔ Herdr workspace bridge)
-- macOS or Linux
-
 ## Install
 
-```bash
-herdr plugin install nicksenap/grove-herdr
-```
-
-Then bind the popup in `~/.config/herdr/config.toml` so Grove owns `prefix+shift+g`:
-
-```toml
-[keys]
-new_worktree = ""
-
-[[keys.command]]
-key = "prefix+shift+g"
-type = "shell"
-command = "herdr plugin pane open --plugin grove.workspace --entrypoint create"
-description = "create Grove workspace"
-```
-
-Reload Herdr config after editing (`herdr server reload-config`, or restart).
-
-### Optional: open/close Herdr workspaces from Grove
-
-Point Grove's lifecycle hooks at the installed plugin. After `herdr plugin install`, the plugin root is the managed checkout shown by `herdr plugin list`.
-
-```toml
-# ~/.grove/config.toml
-[hooks]
-post_create = {command = "<plugin-root>/hooks/post-create.sh {path} {name}", timeout = "15s", on_failure = "warn"}
-pre_delete = {command = "<plugin-root>/hooks/pre-delete.sh {path} {name}", timeout = "10s", on_failure = "warn"}
-```
-
-Replace `<plugin-root>` with the path from `herdr plugin list`. If you clone or link the repo yourself, use that path instead.
-
-`post_create` focuses an existing Herdr workspace for that Grove path, or creates one. `pre_delete` closes it on `gw delete`. Both no-op if Herdr is not running.
-
-### Local development
+Needs `gw`, `herdr` (0.8.0+), `git`, and `python3`.
 
 ```bash
-herdr plugin link /path/to/grove-herdr
+curl -fsSL https://raw.githubusercontent.com/nicksenap/grove-herdr/main/install.sh | sh
 ```
 
-`herdr plugin install` refuses to overwrite a locally linked plugin. Unlink first if you want to switch to the GitHub install.
+Or from a clone:
+
+```bash
+./install.sh
+```
+
+The script is idempotent. Re-run it any time. A second run is a no-op if the plugin is already linked, `prefix+shift+g` already opens Grove, and Grove's lifecycle hooks already point here.
+
+It will:
+
+1. Clone or update a checkout (curl path uses `~/.local/share/grove-herdr`)
+2. `herdr plugin link` this directory
+3. Bind `prefix+shift+g` to the Grove create popup and clear Herdr's stock worktree key
+4. Point Grove `post_create` / `pre_delete` at this plugin, unless those hooks already run something else
+5. Reload Herdr config when a server is running
+
+Existing unrelated Herdr settings are left alone. If Grove already has custom `post_create` / `pre_delete` hooks, they are not overwritten.
 
 ## Usage
 
 1. Press `prefix+shift+g` in Herdr.
 2. Type a Grove workspace name. Escape dismisses.
 3. Grove runs `gw create <name>` (repo picker included).
-4. If Grove hooks are configured, a Herdr workspace opens on that path.
+4. A Herdr workspace opens on that path.
 
 ## Layout
 
 ```text
+install.sh                 One-shot, re-runnable installer
+scripts/configure.py       Idempotent Herdr + Grove config wiring
 herdr-plugin.toml          Herdr plugin manifest (id: grove.workspace)
 hooks/
   herdr-create.sh          Popup: type a name, then gw create
@@ -84,11 +61,3 @@ hooks/
   post-create.sh           Grove post_create → herdr-workspace.sh open
   pre-delete.sh            Grove pre_delete → herdr-workspace.sh close
 ```
-
-## Uninstall
-
-```bash
-herdr plugin uninstall grove.workspace
-```
-
-Remove the `prefix+shift+g` binding and Grove hooks if you added them.
