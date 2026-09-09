@@ -1,0 +1,14 @@
+id = "grove.workspace"
+name = "Grove Workspace"
+version = "0.1.0"
+min_herdr_version = "0.8.0"
+description = "Open Grove workspace flows inside Herdr."
+platforms = ["linux", "macos"]
+
+[[panes]]
+id = "create"
+title = "Grove"
+placement = "popup"
+width = 72
+height = 18
+command = ["./hooks/herdr-create.sh"]
