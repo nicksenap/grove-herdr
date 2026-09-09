@@ -42,6 +42,26 @@ It will:
 
 Existing unrelated Herdr settings are left alone. If Grove already has custom `post_create` / `pre_delete` hooks, they are not overwritten.
 
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nicksenap/grove-herdr/main/uninstall.sh | sh
+```
+
+Or from a clone: `./uninstall.sh`
+
+Also idempotent. It unlinks `grove.workspace`, removes only this plugin's `prefix+shift+g` binding and Grove hooks, and leaves everything else. The checkout under `~/.local/share/grove-herdr` stays on disk.
+
+## Versioning
+
+Herdr does not have a plugin registry or `plugin update`. Versioning is:
+
+- `version` in `herdr-plugin.toml` — display metadata (`0.1.0` today)
+- `min_herdr_version` — oldest Herdr that can load the plugin (`0.8.0`)
+- Git — `herdr plugin install owner/repo --ref <tag-or-sha>` pins a revision; reinstalling replaces the managed checkout. There is no separate update command.
+
+This installer uses `herdr plugin link` on a git checkout, so `./install.sh` fast-forwards that clone. Bump `version` in the manifest when behavior changes.
+
 ## Usage
 
 1. Press `prefix+shift+g` in Herdr.
@@ -53,6 +73,7 @@ Existing unrelated Herdr settings are left alone. If Grove already has custom `p
 
 ```text
 install.sh                 One-shot, re-runnable installer
+uninstall.sh               Inverse of install.sh; also re-runnable
 scripts/configure.py       Idempotent Herdr + Grove config wiring
 herdr-plugin.toml          Herdr plugin manifest (id: grove.workspace)
 hooks/

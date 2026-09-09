@@ -192,4 +192,37 @@ assert_file_eq "$HERDR_CONFIG_PATH" "$tmp/install.herdr" "second install.sh chan
 assert_file_eq "$GROVE_CONFIG" "$tmp/install.grove" "second install.sh changed grove config"
 assert_file_eq "$state/plugin-list" "$tmp/install.plugin-list" "second install.sh relinked the plugin"
 
+# Uninstall reverses our wiring, then a second uninstall is a no-op.
+"$root/uninstall.sh" >/dev/null
+[ ! -s "$state/plugin-list" ] || fail "uninstall.sh left grove.workspace linked"
+if grep -Fq 'grove.workspace' "$HERDR_CONFIG_PATH" 2>/dev/null; then
+  fail "uninstall.sh left Grove keybinding"
+fi
+if grep -Fq 'new_worktree' "$HERDR_CONFIG_PATH" 2>/dev/null; then
+  fail "uninstall.sh left new_worktree override"
+fi
+if grep -Fq 'post-create.sh' "$GROVE_CONFIG" 2>/dev/null; then
+  fail "uninstall.sh left Grove hooks"
+fi
+cp "$HERDR_CONFIG_PATH" "$tmp/uninstall.herdr"
+cp "$GROVE_CONFIG" "$tmp/uninstall.grove"
+cp "$state/plugin-list" "$tmp/uninstall.plugin-list"
+
+"$root/uninstall.sh" >/dev/null
+assert_file_eq "$HERDR_CONFIG_PATH" "$tmp/uninstall.herdr" "second uninstall.sh changed herdr config"
+assert_file_eq "$GROVE_CONFIG" "$tmp/uninstall.grove" "second uninstall.sh changed grove config"
+assert_file_eq "$state/plugin-list" "$tmp/uninstall.plugin-list" "second uninstall.sh changed plugin list"
+
+# Foreign Grove hooks survive uninstall.
+cat > "$GROVE_CONFIG" <<'EOF'
+repo_dirs = ["/work"]
+
+[hooks]
+post_create = "./scripts/workspace-created {path}"
+pre_delete = "./scripts/workspace-closing {path}"
+EOF
+cp "$GROVE_CONFIG" "$tmp/uninstall.foreign"
+python3 "$configure" grove-uninstall --config "$GROVE_CONFIG" --plugin-root "$root" >/dev/null
+assert_file_eq "$GROVE_CONFIG" "$tmp/uninstall.foreign" "uninstall overwrote foreign Grove hooks"
+
 printf 'Install idempotency tests passed.\n'

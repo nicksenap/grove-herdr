@@ -330,6 +330,123 @@ def upsert_grove(text: str, plugin_root: str) -> tuple[str, list[str], list[str]
     return ensure_trailing_newline(text, nl), changes, skipped
 
 
+def squeeze_blank_lines(text: str, nl: str) -> str:
+    if not text:
+        return ""
+    doubled = nl + nl
+    while doubled + nl in text:
+        text = text.replace(doubled + nl, doubled)
+    return text
+
+
+def remove_span(text: str, start: int, end: int) -> str:
+    while end < len(text) and text[end] in "\r\n":
+        end += 1
+        if text[end - 1] == "\n":
+            break
+    return text[:start] + text[end:]
+
+
+def remove_empty_section(text: str, header: str) -> tuple[str, bool]:
+    found = [s for s in sections(text) if s[0] == header]
+    if not found:
+        return text, False
+    _header, start, end = found[0]
+    body = section_body(text, header, start, end)
+    if body.strip():
+        return text, False
+    return remove_span(text, start, end), True
+
+
+def uninstall_herdr(text: str) -> tuple[str, list[str]]:
+    nl = newline_for(text)
+    changes: list[str] = []
+    for start, end, block in reversed(command_tables(text)):
+        command = table_command(block) or ""
+        if is_our_create_command(command):
+            text = text[:start] + text[end:]
+            changes.append(f"removed {DEFAULT_KEY} Grove binding")
+
+    found = [s for s in sections(text) if s[0] == "[keys]"]
+    if found:
+        header, start, end = found[0]
+        body = section_body(text, header, start, end)
+        match = NEW_WORKTREE_RE.search(body)
+        if match and match.group("value").strip() in {'""', "''"}:
+            body_start = text.find("\n", start) + 1
+            line_start = body_start + match.start()
+            line_end = body_start + match.end()
+            while line_end < len(text) and text[line_end] in "\r\n":
+                line_end += 1
+                if text[line_end - 1] == "\n":
+                    break
+            text = text[:line_start] + text[line_end:]
+            changes.append("restored default new_worktree")
+
+    text, removed_keys = remove_empty_section(text, "[keys]")
+    if removed_keys:
+        changes.append("removed empty [keys] section")
+    if text.strip():
+        text = squeeze_blank_lines(ensure_trailing_newline(text, nl), nl)
+    else:
+        text = ""
+    return text, changes
+
+
+def remove_hook_assignment(text: str, hook: str) -> str:
+    for header, start, end in sections(text):
+        if header == f"[hooks.{hook}]":
+            return remove_span(text, start, end)
+        if header != "[hooks]":
+            continue
+        body_start = text.find("\n", start) + 1
+        body = text[body_start:end]
+        assign = re.search(
+            rf"(?m)^[ \t]*{re.escape(hook)}\s*=\s*.+?\s*$",
+            body,
+        )
+        if not assign:
+            continue
+        abs_start = body_start + assign.start()
+        abs_end = body_start + assign.end()
+        while abs_end < len(text) and text[abs_end] in "\r\n":
+            abs_end += 1
+            if text[abs_end - 1] == "\n":
+                break
+        return text[:abs_start] + text[abs_end:]
+    return text
+
+
+def uninstall_grove(text: str, plugin_root: str) -> tuple[str, list[str], list[str]]:
+    nl = newline_for(text)
+    changes: list[str] = []
+    skipped: list[str] = []
+    if not text.strip():
+        return "", changes, skipped
+
+    for hook, script_name in (
+        ("post_create", "post-create.sh"),
+        ("pre_delete", "pre-delete.sh"),
+    ):
+        current, form = extract_hook_command(text, hook)
+        if form == "missing" or current is None:
+            continue
+        if is_our_hook(current, plugin_root, script_name):
+            text = remove_hook_assignment(text, hook)
+            changes.append(f"removed hooks.{hook}")
+        else:
+            skipped.append(f"left hooks.{hook} unchanged ({current})")
+
+    text, removed_hooks = remove_empty_section(text, "[hooks]")
+    if removed_hooks:
+        changes.append("removed empty [hooks] section")
+    if text.strip():
+        text = squeeze_blank_lines(ensure_trailing_newline(text, nl), nl)
+    else:
+        text = ""
+    return text, changes, skipped
+
+
 def apply_herdr(path: Path, herdr_bin: str) -> list[str]:
     old = path.read_text(encoding="utf-8") if path.exists() else ""
     new, changes = upsert_herdr(old, herdr_bin)
@@ -346,6 +463,26 @@ def apply_grove(path: Path, plugin_root: str) -> tuple[list[str], list[str]]:
     return [], skipped
 
 
+def apply_herdr_uninstall(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    old = path.read_text(encoding="utf-8")
+    new, changes = uninstall_herdr(old)
+    if write_if_changed(path, old, new):
+        return changes or ["updated Herdr config"]
+    return []
+
+
+def apply_grove_uninstall(path: Path, plugin_root: str) -> tuple[list[str], list[str]]:
+    if not path.exists():
+        return [], []
+    old = path.read_text(encoding="utf-8")
+    new, changes, skipped = uninstall_grove(old, plugin_root)
+    if write_if_changed(path, old, new):
+        return (changes or ["updated Grove config"]), skipped
+    return [], skipped
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -357,6 +494,13 @@ def build_parser() -> argparse.ArgumentParser:
     grove = sub.add_parser("grove")
     grove.add_argument("--config", required=True)
     grove.add_argument("--plugin-root", required=True)
+
+    herdr_un = sub.add_parser("herdr-uninstall")
+    herdr_un.add_argument("--config", required=True)
+
+    grove_un = sub.add_parser("grove-uninstall")
+    grove_un.add_argument("--config", required=True)
+    grove_un.add_argument("--plugin-root", default="")
     return parser
 
 
@@ -369,6 +513,26 @@ def main(argv: list[str] | None = None) -> int:
                 print(line)
         else:
             print("Herdr config already wired")
+        return 0
+
+    if args.cmd == "herdr-uninstall":
+        changes = apply_herdr_uninstall(Path(args.config))
+        if changes:
+            for line in changes:
+                print(line)
+        else:
+            print("Herdr config already unwired")
+        return 0
+
+    if args.cmd == "grove-uninstall":
+        changes, skipped = apply_grove_uninstall(Path(args.config), args.plugin_root)
+        if changes:
+            for line in changes:
+                print(line)
+        else:
+            print("Grove hooks already unwired")
+        for line in skipped:
+            print(f"skip: {line}", file=sys.stderr)
         return 0
 
     changes, skipped = apply_grove(Path(args.config), args.plugin_root)
