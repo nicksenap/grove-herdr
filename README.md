@@ -82,6 +82,6 @@ The hook treats the caller as an agent when one of these is set and non-empty:
 
 `GROVE_HERDR_OPEN` overrides detection either way:
 
-- `GROVE_HERDR_OPEN=1` always opens.
+- `GROVE_HERDR_OPEN=1` always opens. When an agent marker is also set, the workspace opens in the background (`--no-focus`) and an existing one isn't focused.
 - `GROVE_HERDR_OPEN=0` never opens. Set it in the environment of an agent that isn't detected.
 - Unset or empty means auto-detect. Any other value is ignored with a warning.

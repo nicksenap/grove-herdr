@@ -33,8 +33,15 @@ skip() {
   exit 0
 }
 
+open_args=""
+
 case "${GROVE_HERDR_OPEN:-}" in
-  1) ;;
+  1)
+    # An agent forcing the open wants the workspace in the background.
+    if agent_marker >/dev/null; then
+      open_args="--no-focus"
+    fi
+    ;;
   0) skip "GROVE_HERDR_OPEN=0" ;;
   *)
     if [ -n "${GROVE_HERDR_OPEN:-}" ]; then
@@ -47,4 +54,4 @@ case "${GROVE_HERDR_OPEN:-}" in
     ;;
 esac
 
-"$helper" open "$path" "$name" || true
+"$helper" open $open_args "$path" "$name" || true

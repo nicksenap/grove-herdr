@@ -2,13 +2,19 @@
 set -eu
 
 usage() {
-  printf 'usage: herdr-workspace.sh <open|close> <workspace-path> [workspace-name]\n' >&2
+  printf 'usage: herdr-workspace.sh open [--no-focus] <workspace-path> [workspace-name]\n       herdr-workspace.sh close <workspace-path> [workspace-name]\n' >&2
   exit 2
 }
 
 [ "${1:-}" = "open" ] || [ "${1:-}" = "close" ] || usage
 action=$1
 shift
+
+focus=1
+if [ "$action" = "open" ] && [ "${1:-}" = "--no-focus" ]; then
+  focus=0
+  shift
+fi
 
 path=${1:-}
 name=${2:-}
@@ -32,13 +38,14 @@ label=${name:-$(basename "$realpath_path")}
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/grove-herdr"
 state_file="$state_dir/workspaces.json"
 
-python3 - "$action" "$realpath_path" "$label" "$state_file" "$herdr_bin" <<'PY'
+python3 - "$action" "$realpath_path" "$label" "$state_file" "$herdr_bin" "$focus" <<'PY'
 import json
 import os
 import subprocess
 import sys
 
-action, path, label, state_file, herdr_bin = sys.argv[1:]
+action, path, label, state_file, herdr_bin, focus = sys.argv[1:]
+focus = focus == "1"
 
 
 def load_state():
@@ -117,11 +124,13 @@ try:
     if action == "open":
         existing = find_workspace(workspaces, remembered_id, cwds_by_workspace)
         if existing:
-            herdr("workspace", "focus", existing["workspace_id"])
+            if focus:
+                herdr("workspace", "focus", existing["workspace_id"])
             state[path] = existing["workspace_id"]
             save_state(state)
+            verb = "focused" if focus else "found"
             print(
-                f"herdr-workspace: focused {existing['workspace_id']} ({existing.get('label', label)})"
+                f"herdr-workspace: {verb} {existing['workspace_id']} ({existing.get('label', label)})"
             )
             raise SystemExit(0)
 
@@ -132,7 +141,7 @@ try:
             path,
             "--label",
             label,
-            "--focus",
+            "--focus" if focus else "--no-focus",
         )
         workspace = created.get("workspace") or created
         workspace_id = workspace.get("workspace_id")
