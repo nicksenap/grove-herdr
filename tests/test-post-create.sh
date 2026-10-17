@@ -23,7 +23,13 @@ set -eu
 printf '%s\n' "$*" >> "${GROVE_HERDR_TEST_STATE:?}/calls"
 case "$1 ${2:-}" in
   "status "*) exit 0 ;;
-  "workspace list") printf '{"result":{"workspaces":[]}}\n' ;;
+  "workspace list")
+    if [ -n "${GROVE_HERDR_TEST_EXISTING:-}" ]; then
+      printf '{"result":{"workspaces":[{"workspace_id":"w-0","worktree":{"checkout_path":"%s"}}]}}\n' "$GROVE_HERDR_TEST_EXISTING"
+    else
+      printf '{"result":{"workspaces":[]}}\n'
+    fi
+    ;;
   "api snapshot") printf '{"result":{"snapshot":{"agents":[]}}}\n' ;;
   "workspace create") printf '{"result":{"workspace":{"workspace_id":"w-1"}}}\n' ;;
   *) printf '{}\n' ;;
@@ -38,15 +44,21 @@ out=""
 err=""
 code=0
 
-# run_hook <case-name> [VAR=value ...]
+# run_hook <case-name> [VAR=value ...]; helper_no_focus=1 runs `herdr-workspace.sh open --no-focus` instead.
+helper_no_focus=0
 run_hook() {
   case_dir="$tmp/cases/$1"
   shift
   mkdir -p "$case_dir/state" "$case_dir/xdg"
   : > "$case_dir/state/calls"
   code=0
-  env GROVE_HERDR_TEST_STATE="$case_dir/state" XDG_STATE_HOME="$case_dir/xdg" "$@" \
-    "$hook" "$ws" feature >"$case_dir/out" 2>"$case_dir/err" || code=$?
+  if [ "$helper_no_focus" = 1 ]; then
+    env GROVE_HERDR_TEST_STATE="$case_dir/state" XDG_STATE_HOME="$case_dir/xdg" "$@" \
+      "$root/hooks/herdr-workspace.sh" open --no-focus "$ws" feature >"$case_dir/out" 2>"$case_dir/err" || code=$?
+  else
+    env GROVE_HERDR_TEST_STATE="$case_dir/state" XDG_STATE_HOME="$case_dir/xdg" "$@" \
+      "$hook" "$ws" feature >"$case_dir/out" 2>"$case_dir/err" || code=$?
+  fi
   out=$(cat "$case_dir/out")
   err=$(cat "$case_dir/err")
 }
@@ -67,8 +79,16 @@ assert_skipped() {
   printf '%s\n' "$out" | grep -Fq 'GROVE_HERDR_OPEN=1' || fail "$1: missing override hint: $out"
 }
 
+# assert_create_flag <case-name> <expected-flag> <forbidden-flag>
+assert_create_flag() {
+  create=$(grep '^workspace create' "$case_dir/state/calls")
+  printf '%s\n' "$create" | grep -Eq -- "(^| )$2( |\$)" || fail "$1: expected $2; got: $create"
+  ! printf '%s\n' "$create" | grep -Eq -- "(^| )$3( |\$)" || fail "$1: unexpected $3; got: $create"
+}
+
 run_hook human
 assert_opened "no markers"
+assert_create_flag "no markers" --focus --no-focus
 
 run_hook pi PI_CODING_AGENT=1
 assert_skipped "PI_CODING_AGENT"
@@ -83,6 +103,21 @@ assert_opened "empty marker"
 
 run_hook force PI_CODING_AGENT=1 GROVE_HERDR_OPEN=1
 assert_opened "marker + GROVE_HERDR_OPEN=1"
+
+# An agent opening its workspace itself, in the background.
+helper_no_focus=1
+run_hook helper-no-focus
+assert_opened "helper open --no-focus"
+assert_create_flag "helper open --no-focus" --no-focus --focus
+
+run_hook helper-no-focus-existing GROVE_HERDR_TEST_EXISTING="$ws"
+[ "$code" = 0 ] || fail "existing, helper --no-focus: exit $code"
+! grep -q '^workspace focus' "$case_dir/state/calls" || fail "existing, helper --no-focus: focused: $(cat "$case_dir/state/calls")"
+! grep -q '^workspace create' "$case_dir/state/calls" || fail "existing, helper --no-focus: created a duplicate"
+helper_no_focus=0
+
+run_hook human-existing GROVE_HERDR_TEST_EXISTING="$ws"
+grep -q '^workspace focus w-0' "$case_dir/state/calls" || fail "existing, no markers: expected focus; calls: $(cat "$case_dir/state/calls")"
 
 run_hook never GROVE_HERDR_OPEN=0
 assert_skipped "GROVE_HERDR_OPEN=0"
