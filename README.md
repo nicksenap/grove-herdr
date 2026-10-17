@@ -60,3 +60,28 @@ Removes the plugin, the `prefix+shift+g` Grove binding, and only the Grove hooks
 2. Type a workspace name. Escape cancels.
 3. Grove creates the workspace (repo picker included).
 4. A Herdr workspace opens on that path.
+
+## Agents
+
+When a coding agent runs `gw create`, the `post_create` hook still lets Grove create the workspace, but it doesn't open or focus a Herdr workspace. It prints one line instead:
+
+```
+herdr-workspace: skipped open (agent context: PI_CODING_AGENT); open with: ~/.local/share/grove-herdr/hooks/herdr-workspace.sh open <path> <name> (or set GROVE_HERDR_OPEN=1)
+```
+
+Run that `open with:` command to open it later. `gw delete` then closes it as usual.
+
+The hook treats the caller as an agent when one of these is set and non-empty:
+
+| Variable | Agent |
+| --- | --- |
+| `PI_CODING_AGENT` | Pi |
+| `CLAUDECODE` | Claude Code |
+
+`prefix+shift+g` and `gw create` typed by hand still open the workspace.
+
+`GROVE_HERDR_OPEN` overrides detection either way:
+
+- `GROVE_HERDR_OPEN=1` always opens.
+- `GROVE_HERDR_OPEN=0` never opens. Set it in the environment of an agent that isn't detected.
+- Unset or empty means auto-detect. Any other value is ignored with a warning.
