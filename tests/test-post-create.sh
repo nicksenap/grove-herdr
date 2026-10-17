@@ -44,15 +44,21 @@ out=""
 err=""
 code=0
 
-# run_hook <case-name> [VAR=value ...]
+# run_hook <case-name> [VAR=value ...]; helper_no_focus=1 runs `herdr-workspace.sh open --no-focus` instead.
+helper_no_focus=0
 run_hook() {
   case_dir="$tmp/cases/$1"
   shift
   mkdir -p "$case_dir/state" "$case_dir/xdg"
   : > "$case_dir/state/calls"
   code=0
-  env GROVE_HERDR_TEST_STATE="$case_dir/state" XDG_STATE_HOME="$case_dir/xdg" "$@" \
-    "$hook" "$ws" feature >"$case_dir/out" 2>"$case_dir/err" || code=$?
+  if [ "$helper_no_focus" = 1 ]; then
+    env GROVE_HERDR_TEST_STATE="$case_dir/state" XDG_STATE_HOME="$case_dir/xdg" "$@" \
+      "$root/hooks/herdr-workspace.sh" open --no-focus "$ws" feature >"$case_dir/out" 2>"$case_dir/err" || code=$?
+  else
+    env GROVE_HERDR_TEST_STATE="$case_dir/state" XDG_STATE_HOME="$case_dir/xdg" "$@" \
+      "$hook" "$ws" feature >"$case_dir/out" 2>"$case_dir/err" || code=$?
+  fi
   out=$(cat "$case_dir/out")
   err=$(cat "$case_dir/err")
 }
@@ -97,12 +103,18 @@ assert_opened "empty marker"
 
 run_hook force PI_CODING_AGENT=1 GROVE_HERDR_OPEN=1
 assert_opened "marker + GROVE_HERDR_OPEN=1"
-assert_create_flag "marker + GROVE_HERDR_OPEN=1" --no-focus --focus
 
-run_hook force-existing PI_CODING_AGENT=1 GROVE_HERDR_OPEN=1 GROVE_HERDR_TEST_EXISTING="$ws"
-[ "$code" = 0 ] || fail "existing, marker + GROVE_HERDR_OPEN=1: exit $code"
-! grep -q '^workspace focus' "$case_dir/state/calls" || fail "existing, marker + GROVE_HERDR_OPEN=1: focused: $(cat "$case_dir/state/calls")"
-! grep -q '^workspace create' "$case_dir/state/calls" || fail "existing, marker + GROVE_HERDR_OPEN=1: created a duplicate"
+# An agent opening its workspace itself, in the background.
+helper_no_focus=1
+run_hook helper-no-focus
+assert_opened "helper open --no-focus"
+assert_create_flag "helper open --no-focus" --no-focus --focus
+
+run_hook helper-no-focus-existing GROVE_HERDR_TEST_EXISTING="$ws"
+[ "$code" = 0 ] || fail "existing, helper --no-focus: exit $code"
+! grep -q '^workspace focus' "$case_dir/state/calls" || fail "existing, helper --no-focus: focused: $(cat "$case_dir/state/calls")"
+! grep -q '^workspace create' "$case_dir/state/calls" || fail "existing, helper --no-focus: created a duplicate"
+helper_no_focus=0
 
 run_hook human-existing GROVE_HERDR_TEST_EXISTING="$ws"
 grep -q '^workspace focus w-0' "$case_dir/state/calls" || fail "existing, no markers: expected focus; calls: $(cat "$case_dir/state/calls")"
