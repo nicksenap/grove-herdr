@@ -58,7 +58,7 @@ Removes the plugin, the `prefix+shift+g` Grove binding, and only the Grove hooks
 
 1. In Herdr, press `prefix+shift+g`.
 2. Type a workspace name. Escape cancels.
-3. Grove creates the workspace (repo picker included).
+3. Grove creates the workspace (repo picker included). If `gw create` fails, the popup stays open and shows the error: Enter tries another name, Escape closes.
 4. A Herdr workspace opens on that path.
 
 ## Agents
